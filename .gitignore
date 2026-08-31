@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Local runtime state shared by Cursor sessions in this workspace.
+.cursor/multiagent-coordinator/
