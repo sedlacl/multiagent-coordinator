@@ -6,50 +6,59 @@ The project is intentionally small. Its first goal is to make coordination state
 
 ## V0 principles
 
-- **One shared local state store** for all agent sessions working in the same workspace.
+- **Human-readable handoff state** stored inside the workspace.
 - **Hooks push small deltas** into model context only at existing execution boundaries.
-- **MCP is pull-based** and used when an agent explicitly needs the shared state.
+- **MCP is pull-based** and used when an agent explicitly needs shared state.
 - **No LLM coordinator** in the infrastructure layer.
 - **No automatic follow-up loops** from hooks.
 - **Bounded context injection** to avoid replacing conversation bloat with coordination bloat.
 - **Fail-open hooks**: coordination failure must not break normal Cursor work.
+
+## Local state
+
+Runtime coordination data lives under:
+
+```text
+.cursor/multiagent-coordinator/
+├─ handoff.md
+├─ events.jsonl
+└─ sessions/
+```
+
+The whole directory is gitignored.
+
+`handoff.md` is the durable, human-readable source of truth that another agent or session can inspect directly. It should contain only the compact current state needed to resume work: goal, confirmed facts, decisions, active/queued work, blockers, verification state, and next actions.
+
+`events.jsonl` is only a lightweight machine-readable journal for hook-level deltas. It is not the primary handoff format and does not replace `handoff.md`.
 
 ## V0 flow
 
 ```text
 Cursor session A                    Cursor session B
       |                                  |
-      | Task completes                   | new session
+      | significant state change         | new session
       v                                  v
- postToolUse(Task)                  sessionStart
-      |                                  |
-      +---------- SQLite ----------------+
-                    |
-                    +-- compact shared state
-                    +-- append-only events
-                    +-- per-session event cursor
-                    |
-              MCP stdio server
-                    |
-             explicit read/write
+     hook ---------------------> .cursor/multiagent-coordinator/
+                                      |
+                                      +-- handoff.md
+                                      +-- events.jsonl
+                                      +-- session cursors
+                                      |
+                                MCP stdio server
+                                      |
+                               explicit read/write
 ```
 
-`postToolUse(Task)` records a bounded subagent-result event without requiring an MCP tool call from the model. It also injects only unseen events from *other* sessions through Cursor's `additional_context` field. The current session does not receive a duplicate of its own Task output.
+Hooks should avoid creating extra model/tool-call loops. Where possible they return a short `additional_context` delta as part of an existing Cursor execution boundary.
 
-`sessionStart` injects a compact snapshot when a new Cursor conversation starts.
+`sessionStart` reads `handoff.md` and injects a bounded snapshot into the new session.
 
-The MCP server exposes a deliberately small API for explicit state access:
-
-- `coordinator_read`
-- `coordinator_write_state`
-- `coordinator_append_event`
+The MCP layer is intended for explicit cross-session access to the same text-based state, not as a mandatory hop for every coordination event.
 
 ## Requirements
 
 - Node.js >= 22.13
 - Cursor with project hooks and MCP support
-
-The implementation uses Node's built-in `node:sqlite`, so there is no native SQLite npm dependency to build.
 
 ## Development
 
@@ -59,19 +68,11 @@ npm run build
 npm test
 ```
 
-After building, `.cursor/hooks.json` and `.cursor/mcp.json` can run the local compiled hook handlers and MCP server directly.
+## Configuration
 
-## State location
+By default state is stored in the current workspace under `.cursor/multiagent-coordinator/`.
 
-By default the database is stored outside the repository:
-
-```text
-~/.multiagent-coordinator/state.db
-```
-
-Override it with `MAC_DB_PATH`.
-
-Workspace scope is resolved from `MAC_SCOPE`, Cursor's `workspace_roots`, or the current working directory, in that order.
+Override the state directory with `MAC_STATE_DIR` if needed. `MAC_SCOPE` can be used to override workspace-root resolution.
 
 ## Current non-goals
 
