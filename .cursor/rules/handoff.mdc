@@ -9,6 +9,8 @@ alwaysApply: true
 
 At session start, if you do not already see a `[MULTIAGENT HANDOFF]` block, **read** `handoff.md` or call MCP `get_handoff`.
 
+When the user runs `/handoff`, follow `.cursor/skills/handoff/SKILL.md` and replace the file immediately.
+
 After a significant state change (goal, fact, decision, blocker, finished/queued work, verification), **replace** the whole file — do not append a log. Prefer MCP `write_handoff`. Stay under 8000 characters. Sections:
 
 - Goal
