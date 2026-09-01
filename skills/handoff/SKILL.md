@@ -13,8 +13,6 @@ User-invoked replace of `.cursor/multiagent-coordinator/handoff.md`. Do this imm
 
 **Runtime skill root** = absolute directory that contains **this** `SKILL.md`. Hook and MCP entry points live in `scripts/` (portable Node.js, `node >= 18`).
 
-When this copy lives under `.cursor/skills/handoff/`, the scripts are at `skills/handoff/scripts/` in the plugin / repo root — not next to this file.
-
 ## Steps
 
 1. Read current state with MCP `get_handoff`. Keep the returned `revision`. If MCP is missing, read `.cursor/multiagent-coordinator/handoff.md` directly. Empty handoff is fine.

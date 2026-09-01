@@ -1,0 +1,20 @@
+{
+  "name": "multiagent-coordinator",
+  "version": "0.1.0",
+  "description": "Compact cross-session handoff for agents: workspace handoff.md and MCP get/write. No scheduler or hook follow-up loops.",
+  "author": {
+    "name": "IDS"
+  },
+  "license": "MIT",
+  "keywords": ["handoff", "ids", "coordination"],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "Multiagent Coordinator",
+    "shortDescription": "Cross-session handoff.md for agents.",
+    "longDescription": "Keeps a bounded workspace handoff.md as the source of truth between sessions, with pull-based MCP get/write and optional Cursor hooks. V0 has no scheduler, leases, or hook follow-up loops.",
+    "developerName": "IDS",
+    "category": "Coding",
+    "capabilities": ["Interactive", "Read", "Write"]
+  }
+}

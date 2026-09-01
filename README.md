@@ -1,22 +1,47 @@
 # multiagent-coordinator
 
-Lightweight coordination state for Cursor agents and subagents via hooks and MCP.
+Compact cross-session coordination for Cursor agents: a workspace `handoff.md` as the source of truth, pull-based MCP, and fail-open hooks. No LLM scheduler and no hook follow-up loops.
 
-The project is intentionally small. Its first goal is to make coordination state durable across Cursor sessions without turning coordination into another source of model/tool-call loops.
+Portable **Node.js** (`node >= 18`) — Windows, macOS, Linux. No compile step.
 
-## V0 principles
+## Installation
 
-- **Human-readable handoff state** stored inside the workspace.
-- **Hooks push small deltas** into model context only at existing execution boundaries.
-- **MCP is pull-based** and used when an agent explicitly needs shared state.
-- **No LLM coordinator** in the infrastructure layer.
-- **No automatic follow-up loops** from hooks.
-- **Bounded context injection** to avoid replacing conversation bloat with coordination bloat.
-- **Fail-open hooks**: coordination failure must not break normal Cursor work.
+Install **`multiagent-coordinator`** from the IDS Cursor marketplace (`usy_ids_cursormarketg01`).
+
+This plugin ships:
+
+| Component | Role |
+| --------- | ---- |
+| [skills/handoff/SKILL.md](skills/handoff/SKILL.md) | `/handoff` replace of `handoff.md` |
+| [rules/handoff.mdc](rules/handoff.mdc) | always-applied coordination contract |
+| [commands/handoff.md](commands/handoff.md) | slash command `/handoff` |
+| [mcp.json](mcp.json) | stdio MCP `get_handoff` / `write_handoff` |
+| [hooks/hooks-cursor.json](hooks/hooks-cursor.json) | `sessionStart`, `beforeSubmitPrompt`, `stop` |
+
+## Skills
+
+- [skills/handoff/SKILL.md](skills/handoff/SKILL.md) — replace the bounded handoff snapshot
+- [skills/handoff/scripts/](skills/handoff/scripts/) — store, hooks, and MCP entry points
+
+## Rules
+
+- [rules/handoff.mdc](rules/handoff.mdc) — keep handoff current at durable boundaries; never hook follow-up loops
+
+## Commands
+
+- [commands/handoff.md](commands/handoff.md) — user-invoked snapshot replace
+
+## MCP
+
+- [mcp.json](mcp.json) — `get_handoff`, `write_handoff` (full replace, max 8000 chars, compare-and-swap `expected_revision`)
+
+## Hooks
+
+- [hooks/hooks-cursor.json](hooks/hooks-cursor.json) — inject `[MULTIAGENT HANDOFF]` on session start; journal prompt hash and stop status; never `followup_message`
 
 ## Local state
 
-Runtime coordination data lives under:
+Runtime data lives in the **consuming workspace** (gitignored there):
 
 ```text
 .cursor/multiagent-coordinator/
@@ -25,61 +50,20 @@ Runtime coordination data lives under:
 └─ sessions/
 ```
 
-The whole directory is gitignored.
-
-`handoff.md` is the durable, human-readable source of truth that another agent or session can inspect directly. It should contain only the compact current state needed to resume work: goal, confirmed facts, decisions, active/queued work, blockers, verification state, and next actions.
-
-`events.jsonl` is only a lightweight machine-readable journal for hook-level deltas. It is not the primary handoff format and does not replace `handoff.md`.
-
-## V0 flow
-
-```text
-Cursor session A                    Cursor session B
-      |                                  |
-      | significant state change         | new session
-      v                                  v
-     hook ---------------------> .cursor/multiagent-coordinator/
-                                      |
-                                      +-- handoff.md
-                                      +-- events.jsonl
-                                      +-- session cursors
-                                      |
-                                MCP stdio server
-                                      |
-                               explicit read/write
-```
-
-Hooks should avoid creating extra model/tool-call loops. Where possible they return a short `additional_context` delta as part of an existing Cursor execution boundary.
-
-`sessionStart` reads `handoff.md` and injects a bounded snapshot into the new session.
-
-`beforeSubmitPrompt` records only prompt length and a short hash, not the prompt text.
-
-`stop` records `SESSION_STOP` with status. It must not return `followup_message`.
-
-The MCP layer is pull-based: `get_handoff` and `write_handoff` (full replace, bounded). It is not a scheduler and is not a mandatory hop for every coordination event.
-
-## Requirements
-
-- Node.js >= 22.13
-- Cursor with project hooks and MCP support
+Override with `MAC_STATE_DIR` or `MAC_SCOPE` when needed.
 
 ## Development
 
 ```bash
-npm install
-npm run build
-npm test
+node --test skills/handoff/scripts/tests/*.test.js
 ```
 
-## Configuration
+On Windows PowerShell:
 
-By default state is stored in the current workspace under `.cursor/multiagent-coordinator/`.
+```powershell
+node --test skills/handoff/scripts/tests/store.test.js skills/handoff/scripts/tests/context.test.js skills/handoff/scripts/tests/mcp-server.test.js skills/handoff/scripts/tests/hooks.test.js
+```
 
-Override the state directory with `MAC_STATE_DIR` if needed. `MAC_SCOPE` can be used to override workspace-root resolution.
+## License
 
-Project hooks live in `.cursor/hooks.json`. The stdio MCP server is registered in `.cursor/mcp.json` as `node dist/src/mcp/server.js`.
-
-## Current non-goals
-
-V0 deliberately does **not** implement scheduling, workstream dependency graphs, leases, semantic memory, embeddings, an LLM classifier, or autonomous orchestration. Those can be added incrementally after the basic coordination path proves stable.
+MIT

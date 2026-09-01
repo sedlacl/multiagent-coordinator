@@ -1,0 +1,16 @@
+{
+  "name": "multiagent-coordinator",
+  "displayName": "Multiagent Coordinator",
+  "version": "0.1.0",
+  "description": "Compact cross-session handoff for Cursor agents: workspace handoff.md, MCP get/write, and fail-open hooks. No scheduler or hook follow-up loops.",
+  "author": {
+    "name": "IDS"
+  },
+  "license": "MIT",
+  "keywords": ["handoff", "ids", "coordination"],
+  "skills": "./skills/",
+  "rules": "./rules/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks-cursor.json",
+  "mcpServers": "./mcp.json"
+}

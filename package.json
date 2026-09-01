@@ -5,20 +5,9 @@
   "type": "module",
   "description": "Lightweight coordination state for Cursor agents via hooks and MCP.",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev:mcp": "tsx src/mcp/server.ts",
-    "test": "node --test --import tsx test/*.test.ts"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
-    "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^24.0.0",
-    "tsx": "^4.20.0",
-    "typescript": "^6.0.0"
+    "test": "node --test skills/handoff/scripts/tests/store.test.js skills/handoff/scripts/tests/context.test.js skills/handoff/scripts/tests/mcp-server.test.js skills/handoff/scripts/tests/hooks.test.js"
   }
 }
