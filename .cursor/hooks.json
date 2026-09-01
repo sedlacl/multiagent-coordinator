@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node dist/src/hooks/session-start.js",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node dist/src/hooks/before-submit.js",
+        "timeout": 10
+      }
+    ]
+  }
+}

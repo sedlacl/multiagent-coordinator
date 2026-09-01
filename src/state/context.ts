@@ -1,15 +1,34 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { CoordinationEvent } from './types.js';
+
+// Hook payloads may carry POSIX-style or file:// paths even on Windows,
+// where resolve('/R:/work') would yield 'R:\R:\work'.
+function resolvePath(value: string): string {
+  let path = value.trim();
+
+  if (path.startsWith('file://')) {
+    try {
+      path = fileURLToPath(path);
+    } catch {
+      // Fall through and treat the value as a plain path.
+    }
+  }
+
+  return resolve(path.replace(/^[/\\]+([a-zA-Z]:)/, '$1'));
+}
 
 export function resolveWorkspaceRoot(input: Record<string, unknown>): string {
   const explicit = process.env.MAC_SCOPE?.trim();
-  if (explicit) return resolve(explicit);
+  if (explicit) return resolvePath(explicit);
 
   const roots = input.workspace_roots;
-  if (Array.isArray(roots) && typeof roots[0] === 'string') return resolve(roots[0]);
+  if (Array.isArray(roots) && typeof roots[0] === 'string' && roots[0].trim()) {
+    return resolvePath(roots[0]);
+  }
 
   const cwd = input.cwd;
-  if (typeof cwd === 'string' && cwd.trim()) return resolve(cwd);
+  if (typeof cwd === 'string' && cwd.trim()) return resolvePath(cwd);
 
   return resolve(process.cwd());
 }
