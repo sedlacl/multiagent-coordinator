@@ -2,6 +2,8 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path';
 import type { CoordinationEvent } from './types.js';
 
+export const HANDOFF_MAX_CHARS = 8000;
+
 function stateDir(workspaceRoot: string): string {
   const override = process.env.MAC_STATE_DIR?.trim();
   return override ? resolve(override) : join(workspaceRoot, '.cursor', 'multiagent-coordinator');
@@ -33,8 +35,12 @@ export class CoordinationStore {
   }
 
   writeHandoff(content: string): void {
+    const body = content.trimEnd();
+    if (body.length > HANDOFF_MAX_CHARS) {
+      throw new Error(`handoff exceeds ${HANDOFF_MAX_CHARS} characters (${body.length})`);
+    }
     mkdirSync(dirname(this.handoffPath), { recursive: true });
-    writeFileSync(this.handoffPath, content.trimEnd() + '\n', 'utf8');
+    writeFileSync(this.handoffPath, body + '\n', 'utf8');
   }
 
   appendEvent(kind: string, payload: string, sourceSession?: string | null): CoordinationEvent {

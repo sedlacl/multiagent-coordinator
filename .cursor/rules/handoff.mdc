@@ -1,0 +1,24 @@
+---
+description: Keep compact cross-session handoff state current; use MCP pull, never hook follow-up loops
+alwaysApply: true
+---
+
+# Coordination handoff
+
+`.cursor/multiagent-coordinator/handoff.md` is the source of truth for other sessions. `events.jsonl` is only a journal.
+
+At session start, if you do not already see a `[MULTIAGENT HANDOFF]` block, **read** `handoff.md` or call MCP `get_handoff`.
+
+After a significant state change (goal, fact, decision, blocker, finished/queued work, verification), **replace** the whole file — do not append a log. Prefer MCP `write_handoff`. Stay under 8000 characters. Sections:
+
+- Goal
+- Confirmed facts
+- Decisions
+- Active work
+- Blockers
+- Verification
+- Next actions
+
+When spawning a Task/subagent, paste a short snapshot of the current handoff into the task text. Do not rely on `subagentStart` to inject context. Never use `subagentStop`/`stop` follow-up loops.
+
+Do not put secrets, full prompts, or transcripts into handoff or the event journal.

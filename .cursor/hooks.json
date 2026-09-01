@@ -12,6 +12,12 @@
         "command": "node dist/src/hooks/before-submit.js",
         "timeout": 10
       }
+    ],
+    "stop": [
+      {
+        "command": "node dist/src/hooks/stop.js",
+        "timeout": 10
+      }
     ]
   }
 }

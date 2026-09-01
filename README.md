@@ -53,7 +53,11 @@ Hooks should avoid creating extra model/tool-call loops. Where possible they ret
 
 `sessionStart` reads `handoff.md` and injects a bounded snapshot into the new session.
 
-The MCP layer is intended for explicit cross-session access to the same text-based state, not as a mandatory hop for every coordination event.
+`beforeSubmitPrompt` records only prompt length and a short hash, not the prompt text.
+
+`stop` records `SESSION_STOP` with status. It must not return `followup_message`.
+
+The MCP layer is pull-based: `get_handoff` and `write_handoff` (full replace, bounded). It is not a scheduler and is not a mandatory hop for every coordination event.
 
 ## Requirements
 
@@ -73,6 +77,8 @@ npm test
 By default state is stored in the current workspace under `.cursor/multiagent-coordinator/`.
 
 Override the state directory with `MAC_STATE_DIR` if needed. `MAC_SCOPE` can be used to override workspace-root resolution.
+
+Project hooks live in `.cursor/hooks.json`. The stdio MCP server is registered in `.cursor/mcp.json` as `node dist/src/mcp/server.js`.
 
 ## Current non-goals
 
