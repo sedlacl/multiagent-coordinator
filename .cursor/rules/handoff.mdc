@@ -11,7 +11,17 @@ At session start, if you do not already see a `[MULTIAGENT HANDOFF]` block, **re
 
 When the user runs `/handoff`, follow `.cursor/skills/handoff/SKILL.md` and replace the file immediately.
 
-After a significant state change (goal, fact, decision, blocker, finished/queued work, verification), **replace** the whole file — do not append a log. Prefer MCP `write_handoff`. Stay under 8000 characters. Sections:
+Keep handoff **eventually current**, but do not update it after every fact, edit, test, or tool result. Replace the whole file only at durable coordination boundaries, especially:
+
+- completed workstream or major phase
+- important user direction that changes queued/active work
+- before handing work to another independent session
+- before intentional context compaction or session switch
+- explicit `/handoff`
+
+Prefer MCP `write_handoff`. First obtain the current revision with `get_handoff`, then pass it as `expected_revision`. If the write reports a conflict, read the current handoff again, merge only still-valid state, and retry with the new revision. Do not overwrite another session unconditionally unless the user explicitly asks for that behavior.
+
+Stay under 8000 characters. Sections:
 
 - Goal
 - Confirmed facts
