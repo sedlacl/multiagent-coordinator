@@ -1,8 +1,10 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
     "multiagent-coordinator": {
+      "type": "stdio",
       "command": "node",
-      "args": ["skills/handoff/scripts/mcp-server.js"]
+      "args": ["${PLUGIN_ROOT}/skills/handoff/scripts/mcp-server.js"]
     }
   }
 }

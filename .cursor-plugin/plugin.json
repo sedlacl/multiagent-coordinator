@@ -12,5 +12,5 @@
   "rules": "./rules/",
   "commands": "./commands/",
   "hooks": "./hooks/hooks-cursor.json",
-  "mcpServers": "./mcp.json"
+  "mcpServers": "./mcp-cursor.json"
 }

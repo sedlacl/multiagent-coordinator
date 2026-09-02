@@ -3,19 +3,19 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "node skills/handoff/scripts/hooks/session-start.js",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/handoff/scripts/hooks/session-start.js\"",
         "timeout": 10
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "node skills/handoff/scripts/hooks/before-submit.js",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/handoff/scripts/hooks/before-submit.js\"",
         "timeout": 10
       }
     ],
     "stop": [
       {
-        "command": "node skills/handoff/scripts/hooks/stop.js",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/handoff/scripts/hooks/stop.js\"",
         "timeout": 10
       }
     ]

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "multiagent-coordinator": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/skills/handoff/scripts/mcp-server.js"]
+    }
+  }
+}

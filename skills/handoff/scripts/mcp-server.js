@@ -34,8 +34,50 @@ const TOOLS = [
   }
 ];
 
-function store() {
-  return new CoordinationStore(resolveWorkspaceRoot({}));
+const ROOTS_TIMEOUT_MS = 1500;
+const pendingRequests = new Map();
+let nextRequestId = 1;
+let clientSupportsRoots = false;
+let cachedRoot = null;
+
+function sendRequest(method, timeoutMs = ROOTS_TIMEOUT_MS) {
+  const id = `mac-${nextRequestId++}`;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingRequests.delete(id);
+      resolve(null);
+    }, timeoutMs);
+    timer.unref?.();
+    pendingRequests.set(id, (message) => {
+      clearTimeout(timer);
+      resolve(message);
+    });
+    send({ jsonrpc: "2.0", id, method });
+  });
+}
+
+/**
+ * A globally installed server gets no workspace from the transport, so ask the
+ * client for its roots. MAC_SCOPE wins; cwd stays the last-resort fallback.
+ */
+async function workspaceRoot() {
+  if (process.env.MAC_SCOPE?.trim()) return resolveWorkspaceRoot({});
+  if (cachedRoot) return cachedRoot;
+
+  if (clientSupportsRoots) {
+    const response = await sendRequest("roots/list");
+    const uri = response?.result?.roots?.[0]?.uri;
+    if (typeof uri === "string" && uri.trim()) {
+      cachedRoot = resolveWorkspaceRoot({ workspace_roots: [uri] });
+      return cachedRoot;
+    }
+  }
+
+  return resolveWorkspaceRoot({});
+}
+
+async function store() {
+  return new CoordinationStore(await workspaceRoot());
 }
 
 function textResult(payload, isError = false) {
@@ -47,7 +89,7 @@ function textResult(payload, isError = false) {
 
 async function callTool(name, args = {}) {
   if (name === "get_handoff") {
-    const snapshot = store().getHandoffSnapshot();
+    const snapshot = (await store()).getHandoffSnapshot();
     return textResult({
       revision: snapshot.revision,
       content: snapshot.content || "(empty handoff)"
@@ -60,7 +102,7 @@ async function callTool(name, args = {}) {
       return textResult("content must be a string", true);
     }
     try {
-      const next = new CoordinationStore(resolveWorkspaceRoot({}));
+      const next = await store();
       const written = next.writeHandoff(content, args.expected_revision);
       next.appendEvent("HANDOFF_WRITE", JSON.stringify({ chars: content.trim().length, revision: written.revision }));
       return textResult({ status: "updated", revision: written.revision });
@@ -96,6 +138,7 @@ async function dispatch(message) {
   const { id, method, params } = message;
 
   if (method === "initialize") {
+    clientSupportsRoots = Boolean(params?.capabilities?.roots);
     return rpcResult(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
@@ -104,6 +147,11 @@ async function dispatch(message) {
   }
 
   if (method === "notifications/initialized" || method === "initialized") {
+    return null;
+  }
+
+  if (method === "notifications/roots/list_changed") {
+    cachedRoot = null;
     return null;
   }
 
@@ -136,6 +184,15 @@ let queue = Promise.resolve();
 process.stdin.on(
   "data",
   createFramedReader((message) => {
+    // Settle our own client requests outside the queue; a queued tool call may
+    // be awaiting this reply.
+    if (message?.method === undefined && message?.id !== undefined && pendingRequests.has(message.id)) {
+      const settle = pendingRequests.get(message.id);
+      pendingRequests.delete(message.id);
+      settle(message);
+      return;
+    }
+
     queue = queue.then(async () => {
       try {
         const response = await dispatch(message);

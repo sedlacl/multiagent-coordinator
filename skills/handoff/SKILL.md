@@ -1,9 +1,6 @@
 ---
 name: handoff
-description: >-
-  Replace the workspace coordination snapshot in handoff.md. Use when the user
-  runs /handoff, says handoff, snapshot coordination state, or asks to write or
-  update the multiagent handoff.
+description: Replace workspace coordination snapshot in handoff.md when user requests a handoff update.
 disable-model-invocation: true
 ---
 
@@ -28,11 +25,17 @@ User-invoked replace of `.cursor/multiagent-coordinator/handoff.md`. Do this imm
 # Handoff
 
 ## Goal
+
 ## Confirmed facts
+
 ## Decisions
+
 ## Active work
+
 ## Blockers
+
 ## Verification
+
 ## Next actions
 ```
 
