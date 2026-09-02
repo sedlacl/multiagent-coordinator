@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "multiagent-coordinator": {
-      "command": "node",
-      "args": ["skills/handoff/scripts/mcp-server.js"]
-    }
-  }
-}
