@@ -2,7 +2,7 @@ import { resolveWorkspaceRoot, sessionIdFrom } from "./lib/context.js";
 import { createFramedReader, encodeMessage } from "./lib/mcp-stdio.js";
 import { CoordinationStore, HANDOFF_MAX_CHARS, HandoffConflictError } from "./lib/store.js";
 
-const SERVER_INFO = { name: "multiagent-coordinator", version: "0.1.0" };
+const SERVER_INFO = { name: "multiagent-coordinator", version: "0.2.0" };
 const PROTOCOL_VERSION = "2024-11-05";
 
 const TOOLS = [

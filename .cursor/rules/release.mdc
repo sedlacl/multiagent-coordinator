@@ -1,0 +1,45 @@
+---
+description: Bump the plugin version and close the changelog whenever a change reaches marketplace consumers
+alwaysApply: true
+---
+
+# Releasing this plugin
+
+Anything a marketplace install would deliver — skill, rule, command, hook, MCP
+server, or manifest — must ship under a **new version**. Marketplace installers
+compare versions to decide whether to update, so a fix left at the current
+version never reaches anyone. Do this in the same change as the fix, not later.
+
+## Bump every version in one step
+
+Five files must agree; a mismatch makes the installed plugin report a version it
+is not:
+
+- `package.json`
+- `.cursor-plugin/plugin.json`
+- `.claude-plugin/plugin.json`
+- `.codex-plugin/plugin.json`
+- `SERVER_INFO` in `skills/handoff/scripts/mcp-server.js` (sent to clients in the MCP `initialize` result)
+
+Verify with a search for the old number before finishing.
+
+## Pick the level
+
+Pre-1.0, use `0.MINOR.PATCH`:
+
+- **MINOR** — new capability, changed tool output or resolution behaviour, or a
+  removed/renamed primitive. Anything that makes a consumer's setup behave
+  differently counts, even when it is a bug fix.
+- **PATCH** — a fix with no observable contract change.
+
+## Close the changelog
+
+Move the `[Unreleased]` entries into a `## [X.Y.Z] - YYYY-MM-DD` section and
+leave `[Unreleased]` empty above it. Every user-visible change belongs there
+under Added / Changed / Fixed.
+
+## Do not
+
+- Fix a bug and leave the version untouched
+- Bump only `package.json` — the manifests are what the installers read
+- Write a changelog entry for internal refactors with no consumer impact

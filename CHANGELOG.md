@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
 ### Fixed
 
 - MCP stdio responses are newline-delimited JSON. The server wrote LSP-style `Content-Length` frames, which no MCP client parses, so the handshake timed out after the client had spawned it. Tests missed it because both sides shared the encoder; a test now asserts the wire format directly.
