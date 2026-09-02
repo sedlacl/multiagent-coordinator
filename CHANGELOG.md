@@ -7,7 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
-- Hook and MCP configs anchor the script paths with the host's plugin-root variable (`${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`, `${PLUGIN_ROOT}`). Workspace-relative paths only resolved when the opened project was this repository, so an installed plugin could not spawn the MCP server and its hooks never fired.
+- Plugin-managed hook and MCP configs anchor the script paths with the host's plugin-root variable (`${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`). Workspace-relative paths only resolved when the opened project was this repository, so an installed plugin could not spawn the MCP server and its hooks never fired.
+
+### Added
+
+- User-scope config variants for installers that merge into `~/.cursor` instead of loading the plugin: root `mcp.json` with a `${userHome}` path, and `hooks/hooks-user.json` with commands relative to `~/.cursor/`.
 - The MCP server resolves the workspace through MCP `roots/list` instead of relying on `process.cwd()`, which pointed at the home directory for a user-level server. Order: `MAC_SCOPE`, client roots, `process.cwd()`.
 
 ## [0.1.0] - 2026-09-01

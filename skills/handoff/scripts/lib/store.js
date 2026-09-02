@@ -16,6 +16,10 @@ export const HANDOFF_MAX_CHARS = 8000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 25;
 const LOCK_RETRIES = 40;
+const STATE_GITIGNORE = `# Local runtime state of the multiagent-coordinator plugin.
+# Nothing in this directory belongs in version control.
+*
+`;
 
 export class HandoffConflictError extends Error {
   constructor(expectedRevision, currentRevision) {
@@ -29,6 +33,14 @@ export class HandoffConflictError extends Error {
 function stateDir(workspaceRoot) {
   const override = process.env.MAC_STATE_DIR?.trim();
   return override ? resolve(override) : join(workspaceRoot, ".cursor", "multiagent-coordinator");
+}
+
+function ensureStateGitignore(dir) {
+  try {
+    writeFileSync(join(dir, ".gitignore"), STATE_GITIGNORE, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+  }
 }
 
 function safeSessionId(sessionId) {
@@ -54,6 +66,7 @@ export class CoordinationStore {
     this.lockPath = join(this.dir, "handoff.lock");
     this.eventsPath = join(this.dir, "events.jsonl");
     mkdirSync(join(this.dir, "sessions"), { recursive: true });
+    ensureStateGitignore(this.dir);
   }
 
   getHandoff() {

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"./skills/multiagent-coordinator/multiagent-coordinator/handoff/scripts/hooks/session-start.js\"",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"./skills/multiagent-coordinator/multiagent-coordinator/handoff/scripts/hooks/before-submit.js\"",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"./skills/multiagent-coordinator/multiagent-coordinator/handoff/scripts/hooks/stop.js\"",
+        "timeout": 10
+      }
+    ]
+  }
+}

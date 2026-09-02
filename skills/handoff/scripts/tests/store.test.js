@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -82,6 +82,22 @@ test("rejects oversized handoff without changing the existing file", () => {
       /handoff exceeds/
     );
     assert.equal(store.getHandoff(), "keep me");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("creates a self-ignoring .gitignore in the state dir and keeps local edits", () => {
+  const root = workspace();
+  try {
+    new CoordinationStore(root);
+
+    const gitignorePath = join(root, ".cursor", "multiagent-coordinator", ".gitignore");
+    assert.match(readFileSync(gitignorePath, "utf8"), /^\*$/m);
+
+    writeFileSync(gitignorePath, "*\n!keep-me\n", "utf8");
+    new CoordinationStore(root);
+    assert.equal(readFileSync(gitignorePath, "utf8"), "*\n!keep-me\n");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

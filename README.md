@@ -19,10 +19,19 @@ This plugin ships:
 | [hooks/hooks-cursor.json](hooks/hooks-cursor.json) | `sessionStart`, `beforeSubmitPrompt`, `stop` |
 
 Plugin hooks and MCP servers run from the opened project, not from the plugin
-directory, so both configs anchor the script paths with `${CURSOR_PLUGIN_ROOT}`.
-The host has to expand that variable; an installer that copies the config
-verbatim into `~/.cursor/mcp.json` or `~/.cursor/hooks/` produces a server that
-cannot start and hooks that never fire — see
+directory, so the plugin-managed configs anchor script paths with
+`${CURSOR_PLUGIN_ROOT}` and rely on the host to expand it.
+
+Installers that copy config into the user scope instead of loading the plugin
+need the user-scope variants, because plugin-root variables are not expanded
+there:
+
+- [mcp.json](mcp.json) — `${userHome}` path into the installed skill directory, safe to merge into `~/.cursor/mcp.json`
+- [hooks/hooks-user.json](hooks/hooks-user.json) — merge these events into `~/.cursor/hooks.json`, where commands run from `~/.cursor/`
+
+Both assume the installer lays skills out as
+`~/.cursor/skills/<source>/<plugin>/handoff/`. Details and the installer
+requests are in
 [docs/issues](docs/issues/2026-09-02-marketplace-install-hooks-and-mcp.md).
 
 ## Skills
@@ -41,7 +50,8 @@ cannot start and hooks that never fire — see
 ## MCP
 
 - [mcp-cursor.json](mcp-cursor.json) — `get_handoff`, `write_handoff` (full replace, max 8000 chars, compare-and-swap `expected_revision`)
-- [mcp.json](mcp.json) and [mcp-claude.json](mcp-claude.json) — same server for the Agent Plugins standard (`${PLUGIN_ROOT}`) and Claude (`${CLAUDE_PLUGIN_ROOT}`)
+- [mcp-claude.json](mcp-claude.json) — same server anchored with `${CLAUDE_PLUGIN_ROOT}`
+- [mcp.json](mcp.json) — user-scope variant with a `${userHome}` path, for installers that merge into `~/.cursor/mcp.json`
 
 The server has no workspace of its own, so it asks the client for one through
 MCP `roots/list`. Resolution order: `MAC_SCOPE`, client roots, `process.cwd()`.
@@ -49,17 +59,21 @@ MCP `roots/list`. Resolution order: `MAC_SCOPE`, client roots, `process.cwd()`.
 ## Hooks
 
 - [hooks/hooks-cursor.json](hooks/hooks-cursor.json) — inject `[MULTIAGENT HANDOFF]` on session start; journal prompt hash and stop status; never `followup_message`
+- [hooks/hooks-user.json](hooks/hooks-user.json) — same events for a user-scope `~/.cursor/hooks.json` merge
 
 ## Local state
 
-Runtime data lives in the **consuming workspace** (gitignored there):
+Runtime data lives in the **consuming workspace**. The state directory ignores itself, so nothing has to be added to the project `.gitignore`:
 
 ```text
 .cursor/multiagent-coordinator/
+├─ .gitignore      # written on first use: `*`
 ├─ handoff.md
 ├─ events.jsonl
 └─ sessions/
 ```
+
+Hooks and the MCP server create the directory and the `.gitignore` on first use. An existing `.gitignore` is never overwritten.
 
 Override with `MAC_STATE_DIR` or `MAC_SCOPE` when needed.
 
