@@ -1,11 +1,11 @@
 /**
- * MCP stdio: Content-Length framing with NDJSON fallback.
+ * MCP stdio: newline-delimited JSON on the wire. The reader also accepts
+ * LSP-style Content-Length frames, which some clients still send.
  */
 
 export function encodeMessage(obj) {
-  const json = JSON.stringify(obj);
-  const body = Buffer.from(json, "utf8");
-  return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "utf8"), body]);
+  // JSON.stringify never emits a raw newline, so one line per message holds.
+  return Buffer.from(`${JSON.stringify(obj)}\n`, "utf8");
 }
 
 export function createFramedReader(onMessage) {

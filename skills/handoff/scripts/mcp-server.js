@@ -3,6 +3,7 @@ import { createFramedReader, encodeMessage } from "./lib/mcp-stdio.js";
 import { CoordinationStore, HANDOFF_MAX_CHARS, HandoffConflictError } from "./lib/store.js";
 
 const SERVER_INFO = { name: "multiagent-coordinator", version: "0.1.0" };
+const PROTOCOL_VERSION = "2024-11-05";
 
 const TOOLS = [
   {
@@ -139,8 +140,9 @@ async function dispatch(message) {
 
   if (method === "initialize") {
     clientSupportsRoots = Boolean(params?.capabilities?.roots);
+    const requested = params?.protocolVersion;
     return rpcResult(id, {
-      protocolVersion: "2024-11-05",
+      protocolVersion: typeof requested === "string" && requested ? requested : PROTOCOL_VERSION,
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO
     });

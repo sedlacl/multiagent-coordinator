@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Fixed
 
+- MCP stdio responses are newline-delimited JSON. The server wrote LSP-style `Content-Length` frames, which no MCP client parses, so the handshake timed out after the client had spawned it. Tests missed it because both sides shared the encoder; a test now asserts the wire format directly.
+- `initialize` echoes the client's `protocolVersion` instead of always answering `2024-11-05`.
+
 - Plugin-managed hook and MCP configs anchor the script paths with the host's plugin-root variable (`${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`). Workspace-relative paths only resolved when the opened project was this repository, so an installed plugin could not spawn the MCP server and its hooks never fired.
 
 ### Added

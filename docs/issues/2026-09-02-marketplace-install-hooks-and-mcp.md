@@ -44,6 +44,12 @@ Re-running the install after the first fix attempt produced
 - `${userHome}` is not usable on Windows either. It expands to a POSIX-style `/c:/Users/<user>`, and the leading slash makes Node resolve it against the current drive: `Cannot find module 'C:\c:\Users\<user>\.cursor\skills\...'`.
 - A user-scope stdio server is spawned with the **home directory** as its working directory, which the very first failure proves (`skills/handoff/...` became `C:\Users\<user>\skills\handoff\...`). A path relative to the home directory is therefore the only form that needs no variable expansion.
 
+## Second defect, exposed once the server finally spawned
+
+With a spawnable path the process started but the handshake never completed: `connecting stdio` followed by `stopped connection` roughly ten seconds later, with no error output and repeated `statusType=initializing`.
+
+Cause: `encodeMessage` wrote LSP-style `Content-Length` frames, while MCP stdio is newline-delimited JSON. Both sides of the test suite used the same helper, so the wrong framing passed every test, and the server had never actually completed a handshake with a real client because it had never spawned. The server now writes one JSON object per line; the reader still accepts Content-Length frames from clients that send them. It also echoes the client's `protocolVersion` instead of always answering `2024-11-05`.
+
 ## Plugin-side fix (done)
 
 - `mcp-cursor.json` (referenced from `.cursor-plugin/plugin.json`) anchors the script with `${CURSOR_PLUGIN_ROOT}` and `mcp-claude.json` uses `${CLAUDE_PLUGIN_ROOT}`, for hosts that load the plugin properly.

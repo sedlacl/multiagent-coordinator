@@ -128,6 +128,36 @@ test("MCP lists tools and writes handoff with revision", async () => {
   }
 });
 
+test("MCP answers newline-delimited JSON and echoes the client protocol version", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mac-wire-"));
+  try {
+    const raw = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [serverPath], { env: { ...process.env, MAC_SCOPE: root }, stdio: "pipe" });
+      let out = "";
+      child.stdout.on("data", (chunk) => (out += chunk));
+      child.on("error", reject);
+      child.on("close", () => resolve(out));
+      // A client that speaks plain NDJSON, like Cursor.
+      child.stdin.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } }
+        })}\n`
+      );
+      child.stdin.end();
+    });
+
+    const lines = raw.split("\n").filter(Boolean);
+    assert.equal(lines.length, 1, `expected one NDJSON line, got ${JSON.stringify(raw)}`);
+    assert.ok(!raw.includes("Content-Length"), "MCP stdio must not use LSP-style framing");
+    assert.equal(JSON.parse(lines[0]).result.protocolVersion, "2025-06-18");
+  } finally {
+    rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+  }
+});
+
 test("MCP takes the workspace from client roots instead of cwd", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "mac-roots-"));
   const elsewhere = mkdtempSync(join(tmpdir(), "mac-cwd-"));
