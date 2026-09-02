@@ -26,7 +26,7 @@ Installers that copy config into the user scope instead of loading the plugin
 need the user-scope variants, because plugin-root variables are not expanded
 there:
 
-- [mcp.json](mcp.json) — `${userHome}` path into the installed skill directory, safe to merge into `~/.cursor/mcp.json`
+- [mcp.json](mcp.json) — path relative to the home directory the user-scope server is spawned from, safe to merge into `~/.cursor/mcp.json`. Avoid `${userHome}`: on Windows it expands to `/c:/Users/<user>` and the leading slash breaks module resolution.
 - [hooks/hooks-user.json](hooks/hooks-user.json) — merge these events into `~/.cursor/hooks.json`, where commands run from `~/.cursor/`
 
 Both assume the installer lays skills out as
@@ -51,7 +51,7 @@ requests are in
 
 - [mcp-cursor.json](mcp-cursor.json) — `get_handoff`, `write_handoff` (full replace, max 8000 chars, compare-and-swap `expected_revision`)
 - [mcp-claude.json](mcp-claude.json) — same server anchored with `${CLAUDE_PLUGIN_ROOT}`
-- [mcp.json](mcp.json) — user-scope variant with a `${userHome}` path, for installers that merge into `~/.cursor/mcp.json`
+- [mcp.json](mcp.json) — user-scope variant with a home-relative path, for installers that merge into `~/.cursor/mcp.json`
 
 The server has no workspace of its own, so it asks the client for one through
 MCP `roots/list`. Resolution order: `MAC_SCOPE`, client roots, `process.cwd()`.
