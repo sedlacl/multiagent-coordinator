@@ -1,37 +1,28 @@
 ---
-description: Keep compact cross-session handoff state current; use MCP pull, never hook follow-up loops
+description: Use explicit named handoffs for transferable agent context; never synchronize automatically
 alwaysApply: true
 ---
 
-# Coordination handoff
+# Explicit handoff coordination
 
-`.cursor/multiagent-coordinator/handoff.md` is the source of truth for other sessions. `events.jsonl` is only a journal.
+This plugin provides explicit transferable context, not an autonomous coordinator.
 
-At session start, if you do not already see a `[MULTIAGENT HANDOFF]` block, **read** `handoff.md` or call MCP `get_handoff`.
+Workspace handoffs are named checkpoints stored under `.cursor/multiagent-coordinator/handoffs/`:
 
-When the user runs `/handoff`, follow skill `handoff` (`skills/handoff/SKILL.md`) and replace the file immediately.
+- `/handoff <name>` saves or updates one checkpoint.
+- `/handson <name>` loads one checkpoint.
+- `/handson` lists available workspace handoffs and lets the user choose.
 
-Keep handoff **eventually current**, but do not update it after every fact, edit, test, or tool result. Replace the whole file only at durable coordination boundaries, especially:
+Global handoffs are available across projects:
 
-- completed workstream or major phase
-- important user direction that changes queued/active work
-- before handing work to another independent session
-- before intentional context compaction or session switch
-- explicit `/handoff`
+- `/global-handoff <name>` saves or updates a global checkpoint.
+- `/global-handson <name>` loads one.
+- `/global-handson` lists available global handoffs and lets the user choose.
 
-Prefer MCP `write_handoff`. First obtain the current revision with `get_handoff`, then pass it as `expected_revision`. If the write reports a conflict, read the current handoff again, merge only still-valid state, and retry with the new revision. Do not overwrite another session unconditionally unless the user explicitly asks for that behavior.
+Do **not** update, load, or synchronize handoffs automatically. Do not call MCP merely because ordinary work changed. Handoffs are user-driven boundaries.
 
-Stay under 8000 characters. Sections:
+Writes use compare-and-swap revisions: read first, pass `expected_revision`, and on conflict reload/merge/retry once. Never silently overwrite another session's newer checkpoint.
 
-- Goal
-- Confirmed facts
-- Decisions
-- Active work
-- Blockers
-- Verification
-- Next actions
-- Sessions — Cursor conversation ids (agent transcript UUID), newest first, at most five; never paste transcripts
+Keep snapshots compact (max 8000 chars), current-state oriented, and free of secrets, full prompts, transcripts, or tool dumps.
 
-When spawning a Task/subagent, paste a short snapshot of the current handoff into the task text. Do not rely on `subagentStart` to inject context. Never use `subagentStop`/`stop` follow-up loops.
-
-Do not put secrets, full prompts, or transcripts into handoff or the event journal.
+Optional hook implementations remain in the project as experimental infrastructure, but the default Cursor plugin does not require hooks for the handoff workflow.
