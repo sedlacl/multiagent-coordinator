@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-02
+
+### Fixed
+
+- The user-scope `mcp.json` anchored the server path with `${userHome}` instead of a path relative to the directory the process happens to start in. Cursor documents no working directory for a user-scope stdio server and its config schema has no `cwd` field, so the old relative path resolved only while the process inherited the home directory. Installs that spawned it elsewhere failed to start the server, and a stale process kept serving pre-0.3.0 tools until the config changed.
+
 ## [0.4.0] - 2026-09-02
 
 ### Fixed

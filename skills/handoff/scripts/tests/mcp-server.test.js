@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -9,6 +9,9 @@ import { createFramedReader, encodeMessage } from "../lib/mcp-stdio.js";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const serverPath = join(scriptsDir, "..", "mcp-server.js");
+const packageVersion = JSON.parse(
+  readFileSync(join(scriptsDir, "..", "..", "..", "..", "package.json"), "utf8")
+).version;
 
 function rpc(method, params, id = 1) {
   const msg = { jsonrpc: "2.0", method };
@@ -99,7 +102,7 @@ test("MCP exposes named workspace and global handoff tools", async () => {
     );
 
     const byId = Object.fromEntries(replies.filter((r) => r.id !== undefined).map((r) => [r.id, r]));
-    assert.equal(byId[1].result.serverInfo.version, "0.4.0");
+    assert.equal(byId[1].result.serverInfo.version, packageVersion);
     assert.equal(byId[1].result.protocolVersion, "2025-06-18");
     assert.deepEqual(
       byId[2].result.tools.map((tool) => tool.name).sort(),

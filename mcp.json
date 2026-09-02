@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "node",
       "args": [
-        ".cursor/skills/multiagent-coordinator/multiagent-coordinator/handoff/scripts/mcp-server.js"
+        "${userHome}/.cursor/skills/multiagent-coordinator/multiagent-coordinator/handoff/scripts/mcp-server.js"
       ]
     }
   }
