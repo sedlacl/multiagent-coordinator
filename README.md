@@ -1,98 +1,124 @@
 # multiagent-coordinator
 
-Compact cross-session coordination for Cursor agents: a workspace `handoff.md` as the source of truth, pull-based MCP, and fail-open hooks. No LLM scheduler and no hook follow-up loops.
+Explicit transferable context for coding agents.
+
+The project deliberately avoids autonomous orchestration. Instead it gives agents a cheap, bounded way to save and pick up named working context through skills and a lightweight MCP server.
 
 Portable **Node.js** (`node >= 18`) — Windows, macOS, Linux. No compile step.
+
+## Core workflow
+
+Workspace-local handoffs:
+
+```text
+/handoff OOM
+/handson OOM
+```
+
+Global handoffs available across projects:
+
+```text
+/global-handoff OOM
+/global-handson OOM
+```
+
+Without a name, `/handson` and `/global-handson` list the available handoffs and let the user choose.
+
+The model does the semantic work of building or consuming the compact snapshot. MCP is intentionally only a bounded I/O layer, so the agent does not need to explore files or reconstruct state from a long conversation.
+
+## Skills
+
+| Skill | Purpose |
+| --- | --- |
+| `handoff` | Save/update a named workspace checkpoint |
+| `handson` | Load or list workspace checkpoints |
+| `global-handoff` | Save/update a named checkpoint shared across projects |
+| `global-handson` | Load or list global checkpoints |
+
+Writes use compare-and-swap revisions. A stale writer must reload and merge instead of silently overwriting another session.
+
+## MCP
+
+The stdio MCP server exposes six tools:
+
+```text
+list_handoffs
+get_handoff
+write_handoff
+
+list_global_handoffs
+get_global_handoff
+write_global_handoff
+```
+
+Workspace tools resolve the opened project using `MAC_SCOPE` or MCP `roots/list`. They fail closed if no workspace can be resolved. Global tools do not need a workspace root.
+
+Workspace handoffs are stored under:
+
+```text
+<workspace>/.cursor/multiagent-coordinator/handoffs/
+```
+
+The state directory creates its own `.gitignore` containing `*`, so consuming projects do not need to modify their repository `.gitignore`.
+
+Global handoffs are stored under:
+
+```text
+~/.multiagent-coordinator/handoffs/
+```
+
+Override locations with `MAC_STATE_DIR` and `MAC_GLOBAL_STATE_DIR` when needed.
+
+## Hooks
+
+Hook implementations are intentionally retained as optional/experimental infrastructure because they contain useful cross-platform and Cursor integration work already learned by the project.
+
+They are **not enabled by the default Cursor plugin** in 0.3.0. The explicit `/handoff` → `/handson` workflow does not require session-start injection, prompt journaling, stop hooks, or automatic follow-up loops.
+
+Reference configs remain in:
+
+```text
+hooks/hooks-cursor.json
+hooks/hooks-user.json
+```
+
+They can be reintroduced later if a concrete automatic-coordination use case proves useful.
 
 ## Installation
 
 Install **`multiagent-coordinator`** as a Cursor plugin from the marketplace that hosts it. For local development, link this repository into `~/.cursor/plugins/local/` and reload Cursor.
 
-This plugin ships:
+Plugin-managed MCP configs use `${CURSOR_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}`. User-scope installer variants remain available for installations that merge configuration directly under `~/.cursor`.
 
-| Component | Role |
-| --------- | ---- |
-| [skills/handoff/SKILL.md](skills/handoff/SKILL.md) | `/handoff` replace of `handoff.md` (Cursor) |
-| [rules/handoff.mdc](rules/handoff.mdc) | always-applied coordination contract |
-| [commands/handoff.md](commands/handoff.md) | `/handoff` for Claude Code only |
-| [mcp-cursor.json](mcp-cursor.json) | stdio MCP `get_handoff` / `write_handoff` |
-| [hooks/hooks-cursor.json](hooks/hooks-cursor.json) | `sessionStart`, `beforeSubmitPrompt`, `stop` |
+## Claude Code
 
-Plugin hooks and MCP servers run from the opened project, not from the plugin
-directory, so the plugin-managed configs anchor script paths with
-`${CURSOR_PLUGIN_ROOT}` and rely on the host to expand it.
-
-Installers that copy config into the user scope instead of loading the plugin
-need the user-scope variants, because plugin-root variables are not expanded
-there:
-
-- [mcp.json](mcp.json) — path relative to the home directory the user-scope server is spawned from, safe to merge into `~/.cursor/mcp.json`. Avoid `${userHome}`: on Windows it expands to `/c:/Users/<user>` and the leading slash breaks module resolution.
-- [hooks/hooks-user.json](hooks/hooks-user.json) — merge these events into `~/.cursor/hooks.json`, where commands run from `~/.cursor/`
-
-Both assume the installer lays skills out as
-`~/.cursor/skills/<source>/<plugin>/handoff/`. A copy of `hooks-cursor.json`
-under `~/.cursor/hooks/<source>/<plugin>/` is not loaded by Cursor — merge
-[hooks/hooks-user.json](hooks/hooks-user.json) into `~/.cursor/hooks.json`, or
-install into `~/.cursor/plugins/` so the host expands plugin-root variables
-and registers hooks from the manifest.
-
-## Skills
-
-- [skills/handoff/SKILL.md](skills/handoff/SKILL.md) — replace the bounded handoff snapshot
-- [skills/handoff/scripts/](skills/handoff/scripts/) — store, hooks, and MCP entry points
-
-## Rules
-
-- [rules/handoff.mdc](rules/handoff.mdc) — keep handoff current at durable boundaries; never hook follow-up loops
-
-## Commands
-
-- [commands/handoff.md](commands/handoff.md) — Claude Code slash entry for `/handoff`. Cursor does **not** ship this command: the skill alone already appears in the slash palette (`disable-model-invocation: true`), and declaring both produced two identical `/handoff` entries. After upgrading from an older install, delete a leftover `~/.cursor/commands/multiagent-coordinator/` if a duplicate persists.
-
-## MCP
-
-- [mcp-cursor.json](mcp-cursor.json) — `get_handoff`, `write_handoff` (full replace, max 8000 chars, compare-and-swap `expected_revision`)
-- [mcp-claude.json](mcp-claude.json) — same server anchored with `${CLAUDE_PLUGIN_ROOT}`
-- [mcp.json](mcp.json) — user-scope variant with a home-relative path, for installers that merge into `~/.cursor/mcp.json`
-
-The server has no workspace of its own, so it asks the client for one through
-MCP `roots/list` on every tool call (a user-scope process is shared across
-windows). Resolution order: `MAC_SCOPE`, then client roots. If neither is set
-the tools fail instead of writing under `process.cwd()`. Results include
-`workspace` so the caller can see which directory was used.
-
-## Hooks
-
-- [hooks/hooks-cursor.json](hooks/hooks-cursor.json) — inject `[MULTIAGENT SESSION]` and `[MULTIAGENT HANDOFF]` on session start; journal prompt hash and stop status; never `followup_message`
-- [hooks/hooks-user.json](hooks/hooks-user.json) — same events for a user-scope `~/.cursor/hooks.json` merge
-
-## Local state
-
-Runtime data lives in the **consuming workspace**. The state directory ignores itself, so nothing has to be added to the project `.gitignore`:
+Claude Code receives equivalent slash commands from `commands/`:
 
 ```text
-.cursor/multiagent-coordinator/
-├─ .gitignore      # written on first use: `*`
-├─ handoff.md
-├─ events.jsonl
-└─ sessions/
+/handoff <name>
+/handson [name]
+/global-handoff <name>
+/global-handson [name]
 ```
-
-Hooks and the MCP server create the directory and the `.gitignore` on first use. An existing `.gitignore` is never overwritten.
-
-Override with `MAC_STATE_DIR` or `MAC_SCOPE` when needed.
 
 ## Development
 
 ```bash
-node --test skills/handoff/scripts/tests/*.test.js
+npm test
 ```
 
-On Windows PowerShell:
+On Windows PowerShell the package script invokes the test files explicitly, so no shell globbing is required.
 
-```powershell
-node --test skills/handoff/scripts/tests/store.test.js skills/handoff/scripts/tests/context.test.js skills/handoff/scripts/tests/mcp-server.test.js skills/handoff/scripts/tests/hooks.test.js
-```
+## Design principles
+
+- Explicit context transfer instead of hidden synchronization
+- Named checkpoints instead of one global project transcript
+- Compact current-state snapshots, max 8000 characters
+- MCP as cheap bounded I/O, not an orchestrator
+- CAS-safe concurrent writes
+- No LLM scheduler
+- No automatic hook follow-up loops
+- Keep optional hook know-how without making it part of the default workflow
 
 ## License
 
