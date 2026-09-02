@@ -10,7 +10,6 @@
   "keywords": ["handoff", "ids", "coordination"],
   "skills": "./skills/",
   "rules": "./rules/",
-  "commands": "./commands/",
   "hooks": "./hooks/hooks-cursor.json",
   "mcpServers": "./mcp-cursor.json"
 }

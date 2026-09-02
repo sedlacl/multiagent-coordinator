@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createFramedReader, encodeMessage } from "../lib/mcp-stdio.js";
@@ -17,10 +17,11 @@ function rpc(method, params, id = 1) {
   return encodeMessage(msg);
 }
 
-function callServer(messages, env, expectedReplies) {
+function callServer(messages, env, expectedReplies, cwd) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const child = spawn(process.execPath, [serverPath], {
+      cwd,
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -29,9 +30,9 @@ function callServer(messages, env, expectedReplies) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      child.once("exit", () => (error ? reject(error) : resolve(replies)));
+      child.stdin.end();
       child.kill("SIGKILL");
-      if (error) reject(error);
-      else resolve(replies);
     };
     const onMessage = (message) => {
       replies.push(message);
@@ -120,9 +121,12 @@ test("MCP lists tools and writes handoff with revision", async () => {
     );
     const written = JSON.parse(byId[3].result.content[0].text);
     assert.equal(written.status, "updated");
+    assert.equal(written.workspace, resolve(root));
+    assert.equal(written.handoff_path, join(root, ".cursor", "multiagent-coordinator", "handoff.md"));
     const read = JSON.parse(byId[4].result.content[0].text);
     assert.match(read.content, /## Goal/);
     assert.equal(read.revision, written.revision);
+    assert.equal(read.workspace, resolve(root));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -178,7 +182,9 @@ test("MCP takes the workspace from client roots instead of cwd", async () => {
     });
 
     assert.deepEqual(requests.map((request) => request.method), ["roots/list"]);
-    assert.equal(JSON.parse(replies.at(-1).result.content[0].text).status, "updated");
+    const written = JSON.parse(replies.at(-1).result.content[0].text);
+    assert.equal(written.status, "updated");
+    assert.equal(written.workspace, resolve(workspace));
     assert.ok(existsSync(join(workspace, ".cursor", "multiagent-coordinator", "handoff.md")));
     assert.ok(!existsSync(join(elsewhere, ".cursor")));
   } finally {
@@ -186,5 +192,84 @@ test("MCP takes the workspace from client roots instead of cwd", async () => {
     const cleanup = { recursive: true, force: true, maxRetries: 20, retryDelay: 50 };
     rmSync(workspace, cleanup);
     rmSync(elsewhere, cleanup);
+  }
+});
+
+test("MCP resolves sequential tool calls to different client roots in one process", async () => {
+  const workspaceA = mkdtempSync(join(tmpdir(), "mac-root-a-"));
+  const workspaceB = mkdtempSync(join(tmpdir(), "mac-root-b-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "mac-root-cwd-"));
+  const roots = [workspaceA, workspaceB];
+  let rootIndex = 0;
+  try {
+    const { replies, requests } = await talkToServer({
+      cwd: elsewhere,
+      env: { MAC_SCOPE: "", MAC_STATE_DIR: "" },
+      messages: [
+        rpc("initialize", {
+          protocolVersion: "2024-11-05",
+          capabilities: { roots: { listChanged: true } },
+          clientInfo: { name: "test", version: "0" }
+        }),
+        rpc("tools/call", { name: "write_handoff", arguments: { content: "# Handoff\n\n## Goal\nA" } }, 2),
+        rpc(
+          "tools/call",
+          {
+            name: "write_handoff",
+            arguments: { content: "# Handoff\n\n## Goal\nB" },
+            _meta: { session_id: "window-b" }
+          },
+          3
+        )
+      ],
+      answer: () => ({ roots: [{ uri: pathToFileURL(roots[rootIndex++]).href, name: "workspace" }] }),
+      expectedId: 3
+    });
+
+    assert.deepEqual(requests.map((request) => request.method), ["roots/list", "roots/list"]);
+    const byId = Object.fromEntries(replies.filter((r) => r.id !== undefined).map((r) => [r.id, r]));
+    const writtenA = JSON.parse(byId[2].result.content[0].text);
+    const writtenB = JSON.parse(byId[3].result.content[0].text);
+    assert.equal(writtenA.workspace, resolve(workspaceA));
+    assert.equal(writtenB.workspace, resolve(workspaceB));
+    assert.ok(existsSync(join(workspaceA, ".cursor", "multiagent-coordinator", "handoff.md")));
+    assert.ok(existsSync(join(workspaceB, ".cursor", "multiagent-coordinator", "handoff.md")));
+    assert.ok(!existsSync(join(elsewhere, ".cursor")));
+
+    const eventB = JSON.parse(
+      readFileSync(join(workspaceB, ".cursor", "multiagent-coordinator", "events.jsonl"), "utf8").trim()
+    );
+    assert.equal(eventB.sourceSession, "window-b");
+    assert.equal(JSON.parse(eventB.payload).workspace, resolve(workspaceB));
+  } finally {
+    const cleanup = { recursive: true, force: true, maxRetries: 20, retryDelay: 50 };
+    rmSync(workspaceA, cleanup);
+    rmSync(workspaceB, cleanup);
+    rmSync(elsewhere, cleanup);
+  }
+});
+
+test("MCP refuses I/O when workspace cannot be resolved", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "mac-unresolved-"));
+  try {
+    const replies = await callServer(
+      [
+        rpc("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test", version: "0" } }),
+        rpc("tools/call", { name: "get_handoff", arguments: {} }, 2),
+        rpc("tools/call", { name: "write_handoff", arguments: { content: "# Handoff\n\n## Goal\nNo" } }, 3)
+      ],
+      { MAC_SCOPE: "", MAC_STATE_DIR: "" },
+      3,
+      cwd
+    );
+
+    const byId = Object.fromEntries(replies.filter((r) => r.id !== undefined).map((r) => [r.id, r]));
+    assert.equal(byId[2].result.isError, true);
+    assert.match(byId[2].result.content[0].text, /Cannot resolve workspace/);
+    assert.equal(byId[3].result.isError, true);
+    assert.match(byId[3].result.content[0].text, /Cannot resolve workspace/);
+    assert.ok(!existsSync(join(cwd, ".cursor")));
+  } finally {
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });

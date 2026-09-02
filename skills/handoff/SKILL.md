@@ -12,9 +12,9 @@ User-invoked replace of `.cursor/multiagent-coordinator/handoff.md`. Do this imm
 
 ## Steps
 
-1. Read current state with MCP `get_handoff`. Keep the returned `revision`. If MCP is missing, read `.cursor/multiagent-coordinator/handoff.md` directly. Empty handoff is fine.
+1. Read current state with MCP `get_handoff`. Keep the returned `revision`. Confirm `workspace` is this opened project; if it is a different directory, stop and report the mismatch — do not write. If MCP is missing, read `.cursor/multiagent-coordinator/handoff.md` directly. Empty handoff is fine.
 2. Build a **full replacement** from this conversation plus the old snapshot. Keep what is still true; drop stale items. Do not append a log.
-3. Write with MCP `write_handoff`, passing the revision from step 1 as `expected_revision`. Max 8000 characters.
+3. Write with MCP `write_handoff`, passing the revision from step 1 as `expected_revision`. Max 8000 characters. Confirm `workspace` (and `handoff_path` if present) still match this project.
 4. If the MCP reports a revision conflict, call `get_handoff` again, merge the now-current handoff with the intended replacement, and retry once with the new revision. Do not silently overwrite concurrent state.
 5. If MCP is missing, overwrite the file directly as a fallback.
 6. Reply in the user's language: one sentence that it was replaced, plus Goal and Next actions only.

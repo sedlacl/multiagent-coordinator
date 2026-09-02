@@ -12,10 +12,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - Plugin-managed hook and MCP configs anchor the script paths with the host's plugin-root variable (`${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`). Workspace-relative paths only resolved when the opened project was this repository, so an installed plugin could not spawn the MCP server and its hooks never fired.
 
+- A user-scope MCP process no longer caches the first window's `roots/list` answer. Sequential tool calls from different workspaces resolve independently.
+- Cursor no longer declares `commands/` in `.cursor-plugin/plugin.json`. The skill already provides `/handoff` in the slash palette, so shipping both produced two identical entries. Claude Code still uses `commands/handoff.md`.
+
+### Changed
+
+- `get_handoff` and `write_handoff` include `workspace` (and `handoff_path` on write). `HANDOFF_WRITE` events log the resolved workspace.
+- Without `MAC_SCOPE` or client roots the tools return an error instead of falling back to `process.cwd()`.
+
 ### Added
 
-- User-scope config variants for installers that merge into `~/.cursor` instead of loading the plugin: root `mcp.json` with a path relative to the home directory the server is spawned from, and `hooks/hooks-user.json` with commands relative to `~/.cursor/`.
-- The MCP server resolves the workspace through MCP `roots/list` instead of relying on `process.cwd()`, which pointed at the home directory for a user-level server. Order: `MAC_SCOPE`, client roots, `process.cwd()`.
+- User-scope config variants for installers that merge into `~/.cursor` instead of loading the plugin: root `mcp.json` with a path relative to the home directory the user-scope server is spawned from, and `hooks/hooks-user.json` with commands relative to `~/.cursor/`.
+- The MCP server resolves the workspace through MCP `roots/list` instead of relying on `process.cwd()`. Order: `MAC_SCOPE`, then client roots.
 
 ## [0.1.0] - 2026-09-01
 

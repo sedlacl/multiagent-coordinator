@@ -1,4 +1,4 @@
-import { resolveWorkspaceRoot } from "./lib/context.js";
+import { resolveWorkspaceRoot, sessionIdFrom } from "./lib/context.js";
 import { createFramedReader, encodeMessage } from "./lib/mcp-stdio.js";
 import { CoordinationStore, HANDOFF_MAX_CHARS, HandoffConflictError } from "./lib/store.js";
 
@@ -36,10 +36,12 @@ const TOOLS = [
 ];
 
 const ROOTS_TIMEOUT_MS = 1500;
+const UNRESOLVED_WORKSPACE =
+  "Cannot resolve workspace: MAC_SCOPE is unset and the client did not provide MCP roots. Refusing to read or write handoff.md from process.cwd().";
 const pendingRequests = new Map();
 let nextRequestId = 1;
 let clientSupportsRoots = false;
-let cachedRoot = null;
+let clientInfo = null;
 
 function sendRequest(method, timeoutMs = ROOTS_TIMEOUT_MS) {
   const id = `mac-${nextRequestId++}`;
@@ -58,27 +60,35 @@ function sendRequest(method, timeoutMs = ROOTS_TIMEOUT_MS) {
 }
 
 /**
- * A globally installed server gets no workspace from the transport, so ask the
- * client for its roots. MAC_SCOPE wins; cwd stays the last-resort fallback.
+ * A user-scope server is shared across Cursor windows, so never cache the
+ * root. MAC_SCOPE wins; otherwise ask for roots on every tool call. There is
+ * no cwd fallback — guessing a directory is worse than an error.
  */
 async function workspaceRoot() {
   if (process.env.MAC_SCOPE?.trim()) return resolveWorkspaceRoot({});
-  if (cachedRoot) return cachedRoot;
 
   if (clientSupportsRoots) {
     const response = await sendRequest("roots/list");
     const uri = response?.result?.roots?.[0]?.uri;
     if (typeof uri === "string" && uri.trim()) {
-      cachedRoot = resolveWorkspaceRoot({ workspace_roots: [uri] });
-      return cachedRoot;
+      return resolveWorkspaceRoot({ workspace_roots: [uri] });
     }
   }
 
-  return resolveWorkspaceRoot({});
+  throw new Error(UNRESOLVED_WORKSPACE);
 }
 
 async function store() {
   return new CoordinationStore(await workspaceRoot());
+}
+
+function sessionIdFromCall(params) {
+  const meta = params?._meta;
+  if (meta && typeof meta === "object") {
+    const fromMeta = sessionIdFrom(meta);
+    if (fromMeta) return fromMeta;
+  }
+  return sessionIdFrom(params ?? {});
 }
 
 function textResult(payload, isError = false) {
@@ -88,13 +98,19 @@ function textResult(payload, isError = false) {
   };
 }
 
-async function callTool(name, args = {}) {
+async function callTool(name, args = {}, params = {}) {
   if (name === "get_handoff") {
-    const snapshot = (await store()).getHandoffSnapshot();
-    return textResult({
-      revision: snapshot.revision,
-      content: snapshot.content || "(empty handoff)"
-    });
+    try {
+      const next = await store();
+      const snapshot = next.getHandoffSnapshot();
+      return textResult({
+        workspace: next.workspaceRoot,
+        revision: snapshot.revision,
+        content: snapshot.content || "(empty handoff)"
+      });
+    } catch (error) {
+      return textResult(error instanceof Error ? error.message : String(error), true);
+    }
   }
 
   if (name === "write_handoff") {
@@ -105,8 +121,22 @@ async function callTool(name, args = {}) {
     try {
       const next = await store();
       const written = next.writeHandoff(content, args.expected_revision);
-      next.appendEvent("HANDOFF_WRITE", JSON.stringify({ chars: content.trim().length, revision: written.revision }));
-      return textResult({ status: "updated", revision: written.revision });
+      next.appendEvent(
+        "HANDOFF_WRITE",
+        JSON.stringify({
+          chars: content.trim().length,
+          revision: written.revision,
+          workspace: next.workspaceRoot,
+          client: clientInfo
+        }),
+        sessionIdFromCall(params)
+      );
+      return textResult({
+        status: "updated",
+        revision: written.revision,
+        workspace: next.workspaceRoot,
+        handoff_path: next.handoffPath
+      });
     } catch (error) {
       if (error instanceof HandoffConflictError) {
         return textResult(
@@ -140,6 +170,7 @@ async function dispatch(message) {
 
   if (method === "initialize") {
     clientSupportsRoots = Boolean(params?.capabilities?.roots);
+    clientInfo = params?.clientInfo && typeof params.clientInfo === "object" ? params.clientInfo : null;
     const requested = params?.protocolVersion;
     return rpcResult(id, {
       protocolVersion: typeof requested === "string" && requested ? requested : PROTOCOL_VERSION,
@@ -153,7 +184,6 @@ async function dispatch(message) {
   }
 
   if (method === "notifications/roots/list_changed") {
-    cachedRoot = null;
     return null;
   }
 
@@ -168,7 +198,7 @@ async function dispatch(message) {
   if (method === "tools/call") {
     const name = params?.name;
     const args = params?.arguments ?? {};
-    const result = await callTool(name, args);
+    const result = await callTool(name, args, params);
     return rpcResult(id, result);
   }
 

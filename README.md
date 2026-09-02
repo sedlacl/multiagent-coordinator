@@ -12,9 +12,9 @@ This plugin ships:
 
 | Component | Role |
 | --------- | ---- |
-| [skills/handoff/SKILL.md](skills/handoff/SKILL.md) | `/handoff` replace of `handoff.md` |
+| [skills/handoff/SKILL.md](skills/handoff/SKILL.md) | `/handoff` replace of `handoff.md` (Cursor) |
 | [rules/handoff.mdc](rules/handoff.mdc) | always-applied coordination contract |
-| [commands/handoff.md](commands/handoff.md) | slash command `/handoff` |
+| [commands/handoff.md](commands/handoff.md) | `/handoff` for Claude Code only |
 | [mcp-cursor.json](mcp-cursor.json) | stdio MCP `get_handoff` / `write_handoff` |
 | [hooks/hooks-cursor.json](hooks/hooks-cursor.json) | `sessionStart`, `beforeSubmitPrompt`, `stop` |
 
@@ -30,9 +30,11 @@ there:
 - [hooks/hooks-user.json](hooks/hooks-user.json) — merge these events into `~/.cursor/hooks.json`, where commands run from `~/.cursor/`
 
 Both assume the installer lays skills out as
-`~/.cursor/skills/<source>/<plugin>/handoff/`. Details and the installer
-requests are in
-[docs/issues](docs/issues/2026-09-02-marketplace-install-hooks-and-mcp.md).
+`~/.cursor/skills/<source>/<plugin>/handoff/`. A copy of `hooks-cursor.json`
+under `~/.cursor/hooks/<source>/<plugin>/` is not loaded by Cursor — merge
+[hooks/hooks-user.json](hooks/hooks-user.json) into `~/.cursor/hooks.json`, or
+install into `~/.cursor/plugins/` so the host expands plugin-root variables
+and registers hooks from the manifest.
 
 ## Skills
 
@@ -45,7 +47,7 @@ requests are in
 
 ## Commands
 
-- [commands/handoff.md](commands/handoff.md) — user-invoked snapshot replace
+- [commands/handoff.md](commands/handoff.md) — Claude Code slash entry for `/handoff`. Cursor does **not** ship this command: the skill alone already appears in the slash palette (`disable-model-invocation: true`), and declaring both produced two identical `/handoff` entries. After upgrading from an older install, delete a leftover `~/.cursor/commands/multiagent-coordinator/` if a duplicate persists.
 
 ## MCP
 
@@ -54,7 +56,10 @@ requests are in
 - [mcp.json](mcp.json) — user-scope variant with a home-relative path, for installers that merge into `~/.cursor/mcp.json`
 
 The server has no workspace of its own, so it asks the client for one through
-MCP `roots/list`. Resolution order: `MAC_SCOPE`, client roots, `process.cwd()`.
+MCP `roots/list` on every tool call (a user-scope process is shared across
+windows). Resolution order: `MAC_SCOPE`, then client roots. If neither is set
+the tools fail instead of writing under `process.cwd()`. Results include
+`workspace` so the caller can see which directory was used.
 
 ## Hooks
 

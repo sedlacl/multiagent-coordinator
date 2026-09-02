@@ -61,6 +61,7 @@ function sleepSync(ms) {
 
 export class CoordinationStore {
   constructor(workspaceRoot) {
+    this.workspaceRoot = workspaceRoot;
     this.dir = stateDir(workspaceRoot);
     this.handoffPath = join(this.dir, "handoff.md");
     this.lockPath = join(this.dir, "handoff.lock");
