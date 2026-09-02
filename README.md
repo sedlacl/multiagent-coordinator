@@ -63,7 +63,7 @@ the tools fail instead of writing under `process.cwd()`. Results include
 
 ## Hooks
 
-- [hooks/hooks-cursor.json](hooks/hooks-cursor.json) — inject `[MULTIAGENT HANDOFF]` on session start; journal prompt hash and stop status; never `followup_message`
+- [hooks/hooks-cursor.json](hooks/hooks-cursor.json) — inject `[MULTIAGENT SESSION]` and `[MULTIAGENT HANDOFF]` on session start; journal prompt hash and stop status; never `followup_message`
 - [hooks/hooks-user.json](hooks/hooks-user.json) — same events for a user-scope `~/.cursor/hooks.json` merge
 
 ## Local state

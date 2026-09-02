@@ -39,8 +39,20 @@ test("sessionStart injects handoff as additional_context", async () => {
   try {
     new CoordinationStore(root).writeHandoff("# Handoff\n\n## Goal\nHook smoke");
     const output = await runHook("session-start.js", { cwd: root, session_id: "s1" });
+    assert.match(output.additional_context, /\[MULTIAGENT SESSION\] s1/);
     assert.match(output.additional_context, /\[MULTIAGENT HANDOFF\]/);
     assert.match(output.additional_context, /Hook smoke/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sessionStart injects the session id even when handoff is empty", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mac-hook-empty-"));
+  try {
+    const output = await runHook("session-start.js", { cwd: root, session_id: "empty-s" });
+    assert.match(output.additional_context, /\[MULTIAGENT SESSION\] empty-s/);
+    assert.equal(output.additional_context.includes("[MULTIAGENT HANDOFF]"), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

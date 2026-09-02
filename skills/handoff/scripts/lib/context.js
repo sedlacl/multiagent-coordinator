@@ -37,6 +37,10 @@ export function sessionIdFrom(input) {
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
+export function renderSession(sessionId) {
+  return sessionId ? `[MULTIAGENT SESSION] ${sessionId}` : "";
+}
+
 function trim(text, max) {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}\n...[truncated]`;

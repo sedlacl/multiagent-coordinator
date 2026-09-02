@@ -26,6 +26,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - User-scope config variants for installers that merge into `~/.cursor` instead of loading the plugin: root `mcp.json` with a path relative to the home directory the user-scope server is spawned from, and `hooks/hooks-user.json` with commands relative to `~/.cursor/`.
 - The MCP server resolves the workspace through MCP `roots/list` instead of relying on `process.cwd()`. Order: `MAC_SCOPE`, then client roots.
+- Handoff snapshots record contributing Cursor session ids under **Sessions** (at most five). `sessionStart` injects `[MULTIAGENT SESSION]` so the writer can copy the current id without guessing.
 
 ## [0.1.0] - 2026-09-01
 

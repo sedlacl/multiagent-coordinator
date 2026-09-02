@@ -30,6 +30,7 @@ Stay under 8000 characters. Sections:
 - Blockers
 - Verification
 - Next actions
+- Sessions — Cursor conversation ids (agent transcript UUID), newest first, at most five; never paste transcripts
 
 When spawning a Task/subagent, paste a short snapshot of the current handoff into the task text. Do not rely on `subagentStart` to inject context. Never use `subagentStop`/`stop` follow-up loops.
 

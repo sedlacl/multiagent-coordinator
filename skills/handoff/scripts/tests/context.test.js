@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { renderHandoff, resolveWorkspaceRoot } from "../lib/context.js";
+import { renderHandoff, renderSession, resolveWorkspaceRoot } from "../lib/context.js";
 
 test("strips POSIX drive prefix so Windows roots are not doubled", () => {
   const previous = process.env.MAC_SCOPE;
@@ -35,4 +35,9 @@ test("renderHandoff wraps a bounded snapshot", () => {
   const text = renderHandoff("## Goal\nShip", 40);
   assert.match(text, /^\[MULTIAGENT HANDOFF\]/);
   assert.match(text, /## Goal/);
+});
+
+test("renderSession emits a locator line", () => {
+  assert.equal(renderSession("abc-123"), "[MULTIAGENT SESSION] abc-123");
+  assert.equal(renderSession(null), "");
 });
