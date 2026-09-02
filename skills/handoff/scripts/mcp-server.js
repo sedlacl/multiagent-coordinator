@@ -1,43 +1,81 @@
 import { resolveWorkspaceRoot, sessionIdFrom } from "./lib/context.js";
 import { createFramedReader, encodeMessage } from "./lib/mcp-stdio.js";
-import { CoordinationStore, HANDOFF_MAX_CHARS, HandoffConflictError } from "./lib/store.js";
+import {
+  CoordinationStore,
+  GlobalHandoffStore,
+  HANDOFF_MAX_CHARS,
+  HANDOFF_NAME_MAX_CHARS,
+  HandoffConflictError
+} from "./lib/store.js";
 
-const SERVER_INFO = { name: "multiagent-coordinator", version: "0.2.0" };
+const SERVER_INFO = { name: "multiagent-coordinator", version: "0.3.0" };
 const PROTOCOL_VERSION = "2024-11-05";
 
-const TOOLS = [
-  {
-    name: "get_handoff",
-    description:
-      "Read the current compact coordination state and revision from handoff.md. Keep the revision and pass it to write_handoff to avoid overwriting another session.",
+const nameSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: HANDOFF_NAME_MAX_CHARS,
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+  description: "Named handoff key, e.g. OOM or release-T1"
+};
+
+function listTool(name, global = false) {
+  return {
+    name,
+    description: global
+      ? "List named global handoffs available across workspaces."
+      : "List named handoffs available in the current workspace.",
     inputSchema: { type: "object", properties: {} }
-  },
-  {
-    name: "write_handoff",
-    description: `Replace handoff.md with compact current state (max ${HANDOFF_MAX_CHARS} chars). Pass expected_revision from get_handoff; stale writes fail instead of overwriting another session.`,
+  };
+}
+
+function getTool(name, global = false) {
+  return {
+    name,
+    description: global
+      ? "Read one named global handoff and its revision."
+      : "Read one named handoff from the current workspace and its revision.",
+    inputSchema: {
+      type: "object",
+      properties: { name: nameSchema },
+      required: ["name"]
+    }
+  };
+}
+
+function writeTool(name, global = false) {
+  return {
+    name,
+    description: `${global ? "Replace a named global" : "Replace a named workspace"} handoff (max ${HANDOFF_MAX_CHARS} chars). Pass expected_revision from the matching get tool; stale writes fail.`,
     inputSchema: {
       type: "object",
       properties: {
-        content: {
-          type: "string",
-          maxLength: HANDOFF_MAX_CHARS,
-          description: "Full replacement markdown for handoff.md"
-        },
+        name: nameSchema,
+        content: { type: "string", maxLength: HANDOFF_MAX_CHARS },
         expected_revision: {
           type: "string",
           minLength: 64,
           maxLength: 64,
-          description: "Revision returned by get_handoff. Omit only for an intentional unconditional write."
+          description: "Revision returned by the matching get tool. Omit only for an intentional unconditional write."
         }
       },
-      required: ["content"]
+      required: ["name", "content"]
     }
-  }
+  };
+}
+
+const TOOLS = [
+  listTool("list_handoffs"),
+  getTool("get_handoff"),
+  writeTool("write_handoff"),
+  listTool("list_global_handoffs", true),
+  getTool("get_global_handoff", true),
+  writeTool("write_global_handoff", true)
 ];
 
 const ROOTS_TIMEOUT_MS = 1500;
 const UNRESOLVED_WORKSPACE =
-  "Cannot resolve workspace: MAC_SCOPE is unset and the client did not provide MCP roots. Refusing to read or write handoff.md from process.cwd().";
+  "Cannot resolve workspace: MAC_SCOPE is unset and the client did not provide MCP roots. Refusing to access workspace handoffs from process.cwd().";
 const pendingRequests = new Map();
 let nextRequestId = 1;
 let clientSupportsRoots = false;
@@ -59,26 +97,17 @@ function sendRequest(method, timeoutMs = ROOTS_TIMEOUT_MS) {
   });
 }
 
-/**
- * A user-scope server is shared across Cursor windows, so never cache the
- * root. MAC_SCOPE wins; otherwise ask for roots on every tool call. There is
- * no cwd fallback — guessing a directory is worse than an error.
- */
 async function workspaceRoot() {
   if (process.env.MAC_SCOPE?.trim()) return resolveWorkspaceRoot({});
-
   if (clientSupportsRoots) {
     const response = await sendRequest("roots/list");
     const uri = response?.result?.roots?.[0]?.uri;
-    if (typeof uri === "string" && uri.trim()) {
-      return resolveWorkspaceRoot({ workspace_roots: [uri] });
-    }
+    if (typeof uri === "string" && uri.trim()) return resolveWorkspaceRoot({ workspace_roots: [uri] });
   }
-
   throw new Error(UNRESOLVED_WORKSPACE);
 }
 
-async function store() {
+async function workspaceStore() {
   return new CoordinationStore(await workspaceRoot());
 }
 
@@ -98,68 +127,82 @@ function textResult(payload, isError = false) {
   };
 }
 
+function conflictResult(error) {
+  return textResult(
+    {
+      status: "conflict",
+      expected_revision: error.expectedRevision,
+      current_revision: error.currentRevision,
+      action: "Read the handoff again, merge current state, then retry with the new revision."
+    },
+    true
+  );
+}
+
 async function callTool(name, args = {}, params = {}) {
-  if (name === "get_handoff") {
-    try {
-      const next = await store();
-      const snapshot = next.getHandoffSnapshot();
+  try {
+    if (name === "list_handoffs") {
+      const store = await workspaceStore();
+      return textResult({ workspace: store.workspaceRoot, handoffs: store.listNamedHandoffs() });
+    }
+    if (name === "get_handoff") {
+      const store = await workspaceStore();
+      const snapshot = store.getNamedHandoffSnapshot(args.name);
       return textResult({
-        workspace: next.workspaceRoot,
+        workspace: store.workspaceRoot,
+        name: args.name,
         revision: snapshot.revision,
         content: snapshot.content || "(empty handoff)"
       });
-    } catch (error) {
-      return textResult(error instanceof Error ? error.message : String(error), true);
     }
-  }
-
-  if (name === "write_handoff") {
-    const content = args.content;
-    if (typeof content !== "string") {
-      return textResult("content must be a string", true);
-    }
-    try {
-      const next = await store();
-      const written = next.writeHandoff(content, args.expected_revision);
-      next.appendEvent(
+    if (name === "write_handoff") {
+      if (typeof args.content !== "string") return textResult("content must be a string", true);
+      const store = await workspaceStore();
+      const written = store.writeNamedHandoff(args.name, args.content, args.expected_revision);
+      store.appendEvent(
         "HANDOFF_WRITE",
-        JSON.stringify({
-          chars: content.trim().length,
-          revision: written.revision,
-          workspace: next.workspaceRoot,
-          client: clientInfo
-        }),
+        JSON.stringify({ name: args.name, chars: args.content.trim().length, revision: written.revision, workspace: store.workspaceRoot }),
         sessionIdFromCall(params)
       );
       return textResult({
         status: "updated",
+        name: args.name,
         revision: written.revision,
-        workspace: next.workspaceRoot,
-        handoff_path: next.handoffPath
+        workspace: store.workspaceRoot,
+        handoff_path: store.namedHandoffPath(args.name)
       });
-    } catch (error) {
-      if (error instanceof HandoffConflictError) {
-        return textResult(
-          {
-            status: "conflict",
-            expected_revision: error.expectedRevision,
-            current_revision: error.currentRevision,
-            action: "Call get_handoff, merge current state, then retry write_handoff with the new revision."
-          },
-          true
-        );
-      }
-      return textResult(error instanceof Error ? error.message : String(error), true);
     }
-  }
 
-  return textResult(`Unknown tool: ${name}`, true);
+    const globalStore = new GlobalHandoffStore();
+    if (name === "list_global_handoffs") {
+      return textResult({ scope: "global", handoffs: globalStore.listHandoffs() });
+    }
+    if (name === "get_global_handoff") {
+      const snapshot = globalStore.getHandoffSnapshot(args.name);
+      return textResult({ scope: "global", name: args.name, revision: snapshot.revision, content: snapshot.content || "(empty handoff)" });
+    }
+    if (name === "write_global_handoff") {
+      if (typeof args.content !== "string") return textResult("content must be a string", true);
+      const written = globalStore.writeHandoff(args.name, args.content, args.expected_revision);
+      return textResult({
+        status: "updated",
+        scope: "global",
+        name: args.name,
+        revision: written.revision,
+        handoff_path: globalStore.handoffPath(args.name)
+      });
+    }
+
+    return textResult(`Unknown tool: ${name}`, true);
+  } catch (error) {
+    if (error instanceof HandoffConflictError) return conflictResult(error);
+    return textResult(error instanceof Error ? error.message : String(error), true);
+  }
 }
 
 function rpcResult(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
-
 function rpcError(id, code, message) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
@@ -167,7 +210,6 @@ function rpcError(id, code, message) {
 async function dispatch(message) {
   if (!message || typeof message !== "object") return null;
   const { id, method, params } = message;
-
   if (method === "initialize") {
     clientSupportsRoots = Boolean(params?.capabilities?.roots);
     clientInfo = params?.clientInfo && typeof params.clientInfo === "object" ? params.clientInfo : null;
@@ -178,33 +220,11 @@ async function dispatch(message) {
       serverInfo: SERVER_INFO
     });
   }
-
-  if (method === "notifications/initialized" || method === "initialized") {
-    return null;
-  }
-
-  if (method === "notifications/roots/list_changed") {
-    return null;
-  }
-
-  if (method === "ping") {
-    return rpcResult(id, {});
-  }
-
-  if (method === "tools/list") {
-    return rpcResult(id, { tools: TOOLS });
-  }
-
-  if (method === "tools/call") {
-    const name = params?.name;
-    const args = params?.arguments ?? {};
-    const result = await callTool(name, args, params);
-    return rpcResult(id, result);
-  }
-
-  if (id !== undefined) {
-    return rpcError(id, -32601, `Method not found: ${method}`);
-  }
+  if (method === "notifications/initialized" || method === "initialized" || method === "notifications/roots/list_changed") return null;
+  if (method === "ping") return rpcResult(id, {});
+  if (method === "tools/list") return rpcResult(id, { tools: TOOLS });
+  if (method === "tools/call") return rpcResult(id, await callTool(params?.name, params?.arguments ?? {}, params));
+  if (id !== undefined) return rpcError(id, -32601, `Method not found: ${method}`);
   return null;
 }
 
@@ -216,31 +236,23 @@ let queue = Promise.resolve();
 process.stdin.on(
   "data",
   createFramedReader((message) => {
-    // Settle our own client requests outside the queue; a queued tool call may
-    // be awaiting this reply.
     if (message?.method === undefined && message?.id !== undefined && pendingRequests.has(message.id)) {
       const settle = pendingRequests.get(message.id);
       pendingRequests.delete(message.id);
       settle(message);
       return;
     }
-
     queue = queue.then(async () => {
       try {
         const response = await dispatch(message);
         if (response) send(response);
       } catch (error) {
-        const messageText = error instanceof Error ? error.stack ?? error.message : String(error);
-        process.stderr.write(`[multiagent-coordinator] ${messageText}\n`);
-        if (message?.id !== undefined) {
-          send(rpcError(message.id, -32603, error instanceof Error ? error.message : String(error)));
-        }
+        const text = error instanceof Error ? error.stack ?? error.message : String(error);
+        process.stderr.write(`[multiagent-coordinator] ${text}\n`);
+        if (message?.id !== undefined) send(rpcError(message.id, -32603, error instanceof Error ? error.message : String(error)));
       }
     });
   })
 );
-
-process.stdin.on("end", () => {
-  process.exit(0);
-});
+process.stdin.on("end", () => process.exit(0));
 process.stdin.resume();
