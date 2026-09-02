@@ -73,7 +73,7 @@ Override locations with `MAC_STATE_DIR` and `MAC_GLOBAL_STATE_DIR` when needed.
 
 Hook implementations are intentionally retained as optional/experimental infrastructure because they contain useful cross-platform and Cursor integration work already learned by the project.
 
-They are **not enabled by the default Cursor plugin** in 0.3.0. The explicit `/handoff` → `/handson` workflow does not require session-start injection, prompt journaling, stop hooks, or automatic follow-up loops.
+They are **not enabled by the default Cursor plugin**. The explicit `/handoff` → `/handson` workflow does not require session-start injection, prompt journaling, stop hooks, or automatic follow-up loops.
 
 Reference configs remain in:
 
@@ -92,7 +92,7 @@ Plugin-managed MCP configs use `${CURSOR_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}`
 
 ## Claude Code
 
-Claude Code receives equivalent slash commands from `commands/`:
+Claude Code receives equivalent slash commands from `claude-commands/`. The directory is deliberately not named `commands/`, because Cursor installers pick that name up by convention and would register a second, duplicate entry next to each skill:
 
 ```text
 /handoff <name>

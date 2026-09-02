@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-02
+
+### Fixed
+
+- Cursor's slash palette listed every handoff command twice. Dropping `commands/` from `.cursor-plugin/plugin.json` in 0.2.0 was not enough: installers copy a directory named `commands/` into `~/.cursor/commands/` by convention, so each skill entry got a duplicate from the Claude Code wrapper. The wrappers now live in `claude-commands/` and `.claude-plugin/plugin.json` points there.
+
 ## [0.3.0] - 2026-09-02
 
 ### Added

@@ -99,7 +99,7 @@ test("MCP exposes named workspace and global handoff tools", async () => {
     );
 
     const byId = Object.fromEntries(replies.filter((r) => r.id !== undefined).map((r) => [r.id, r]));
-    assert.equal(byId[1].result.serverInfo.version, "0.3.0");
+    assert.equal(byId[1].result.serverInfo.version, "0.4.0");
     assert.equal(byId[1].result.protocolVersion, "2025-06-18");
     assert.deepEqual(
       byId[2].result.tools.map((tool) => tool.name).sort(),

@@ -1,6 +1,6 @@
 {
   "name": "multiagent-coordinator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Explicit named workspace and global handoffs for agents via skills and lightweight MCP.",
   "author": {
     "name": "IDS"
@@ -8,6 +8,6 @@
   "license": "MIT",
   "keywords": ["handoff", "multiagent", "coordination", "context"],
   "skills": "./skills/",
-  "commands": "./commands/",
+  "commands": "./claude-commands/",
   "mcpServers": "./mcp-claude.json"
 }

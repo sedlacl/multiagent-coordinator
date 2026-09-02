@@ -8,7 +8,7 @@ import {
   HandoffConflictError
 } from "./lib/store.js";
 
-const SERVER_INFO = { name: "multiagent-coordinator", version: "0.3.0" };
+const SERVER_INFO = { name: "multiagent-coordinator", version: "0.4.0" };
 const PROTOCOL_VERSION = "2024-11-05";
 
 const nameSchema = {

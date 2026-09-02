@@ -1,7 +1,7 @@
 {
   "name": "multiagent-coordinator",
   "displayName": "Multiagent Coordinator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Explicit named workspace and global handoffs for Cursor agents via skills and lightweight MCP. Optional hook experiments included but not enabled by default.",
   "author": {
     "name": "IDS"
