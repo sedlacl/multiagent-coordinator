@@ -5,14 +5,18 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   statSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 
 export const HANDOFF_MAX_CHARS = 8000;
+export const HANDOFF_NAME_MAX_CHARS = 80;
+const HANDOFF_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 25;
 const LOCK_RETRIES = 40;
@@ -30,9 +34,25 @@ export class HandoffConflictError extends Error {
   }
 }
 
+export function normalizeHandoffName(name) {
+  if (typeof name !== "string") throw new Error("handoff name must be a string");
+  const normalized = name.trim();
+  if (!HANDOFF_NAME_RE.test(normalized) || normalized === "." || normalized === "..") {
+    throw new Error(
+      `invalid handoff name: use 1-${HANDOFF_NAME_MAX_CHARS} characters [A-Za-z0-9._-], starting with a letter or digit`
+    );
+  }
+  return normalized;
+}
+
 function stateDir(workspaceRoot) {
   const override = process.env.MAC_STATE_DIR?.trim();
   return override ? resolve(override) : join(workspaceRoot, ".cursor", "multiagent-coordinator");
+}
+
+function globalStateDir() {
+  const override = process.env.MAC_GLOBAL_STATE_DIR?.trim();
+  return override ? resolve(override) : join(homedir(), ".multiagent-coordinator");
 }
 
 function ensureStateGitignore(dir) {
@@ -59,6 +79,131 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function readSnapshot(path) {
+  let content = "";
+  try {
+    content = normalizeHandoff(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return { content, revision: revisionFor(content) };
+}
+
+function withWriteLock(lockPath, fn) {
+  mkdirSync(dirname(lockPath), { recursive: true });
+  for (let attempt = 0; attempt <= LOCK_RETRIES; attempt += 1) {
+    let fd;
+    try {
+      fd = openSync(lockPath, "wx");
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), "utf8");
+      try {
+        return fn();
+      } finally {
+        closeSync(fd);
+        fd = undefined;
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          // Best-effort cleanup only.
+        }
+      }
+    } catch (error) {
+      if (fd !== undefined) {
+        try {
+          closeSync(fd);
+        } catch {
+          // Best-effort cleanup only.
+        }
+      }
+
+      if (error.code !== "EEXIST") throw error;
+
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch (staleError) {
+        if (staleError.code === "ENOENT") continue;
+      }
+
+      if (attempt === LOCK_RETRIES) {
+        throw new Error(`handoff write lock busy after ${(LOCK_RETRIES + 1) * LOCK_RETRY_MS}ms`);
+      }
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+
+  throw new Error("unreachable handoff lock state");
+}
+
+function writeSnapshot(path, lockPath, content, expectedRevision) {
+  const body = normalizeHandoff(content);
+  if (body.length > HANDOFF_MAX_CHARS) {
+    throw new Error(`handoff exceeds ${HANDOFF_MAX_CHARS} characters (${body.length})`);
+  }
+
+  return withWriteLock(lockPath, () => {
+    const current = readSnapshot(path);
+    if (expectedRevision !== undefined && current.revision !== expectedRevision) {
+      throw new HandoffConflictError(expectedRevision, current.revision);
+    }
+
+    mkdirSync(dirname(path), { recursive: true });
+    const tempPath = join(dirname(path), `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+    try {
+      writeFileSync(tempPath, body ? `${body}\n` : "", { encoding: "utf8", flag: "wx" });
+      renameSync(tempPath, path);
+    } catch (error) {
+      try {
+        unlinkSync(tempPath);
+      } catch {
+        // Best-effort cleanup only.
+      }
+      throw error;
+    }
+
+    return { content: body, revision: revisionFor(body) };
+  });
+}
+
+class NamedHandoffStore {
+  constructor(dir) {
+    this.dir = dir;
+    this.handoffsDir = join(dir, "handoffs");
+    this.locksDir = join(dir, "locks");
+    mkdirSync(this.handoffsDir, { recursive: true });
+  }
+
+  handoffPath(name) {
+    return join(this.handoffsDir, `${normalizeHandoffName(name)}.md`);
+  }
+
+  lockPath(name) {
+    return join(this.locksDir, `${normalizeHandoffName(name)}.lock`);
+  }
+
+  listHandoffs() {
+    try {
+      return readdirSync(this.handoffsDir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => entry.name.slice(0, -3))
+        .sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+  }
+
+  getHandoffSnapshot(name) {
+    return readSnapshot(this.handoffPath(name));
+  }
+
+  writeHandoff(name, content, expectedRevision) {
+    return writeSnapshot(this.handoffPath(name), this.lockPath(name), content, expectedRevision);
+  }
+}
+
 export class CoordinationStore {
   constructor(workspaceRoot) {
     this.workspaceRoot = workspaceRoot;
@@ -68,97 +213,36 @@ export class CoordinationStore {
     this.eventsPath = join(this.dir, "events.jsonl");
     mkdirSync(join(this.dir, "sessions"), { recursive: true });
     ensureStateGitignore(this.dir);
+    this.named = new NamedHandoffStore(this.dir);
   }
 
+  listNamedHandoffs() {
+    return this.named.listHandoffs();
+  }
+
+  namedHandoffPath(name) {
+    return this.named.handoffPath(name);
+  }
+
+  getNamedHandoffSnapshot(name) {
+    return this.named.getHandoffSnapshot(name);
+  }
+
+  writeNamedHandoff(name, content, expectedRevision) {
+    return this.named.writeHandoff(name, content, expectedRevision);
+  }
+
+  // Legacy single-handoff API retained for the optional hook experiments.
   getHandoff() {
     return this.getHandoffSnapshot().content;
   }
 
   getHandoffSnapshot() {
-    let content = "";
-    try {
-      content = normalizeHandoff(readFileSync(this.handoffPath, "utf8"));
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    return { content, revision: revisionFor(content) };
+    return readSnapshot(this.handoffPath);
   }
 
   writeHandoff(content, expectedRevision) {
-    const body = normalizeHandoff(content);
-    if (body.length > HANDOFF_MAX_CHARS) {
-      throw new Error(`handoff exceeds ${HANDOFF_MAX_CHARS} characters (${body.length})`);
-    }
-
-    return this.withWriteLock(() => {
-      const current = this.getHandoffSnapshot();
-      if (expectedRevision !== undefined && current.revision !== expectedRevision) {
-        throw new HandoffConflictError(expectedRevision, current.revision);
-      }
-
-      mkdirSync(dirname(this.handoffPath), { recursive: true });
-      const tempPath = join(this.dir, `.handoff.${process.pid}.${randomUUID()}.tmp`);
-      try {
-        writeFileSync(tempPath, body ? `${body}\n` : "", { encoding: "utf8", flag: "wx" });
-        renameSync(tempPath, this.handoffPath);
-      } catch (error) {
-        try {
-          unlinkSync(tempPath);
-        } catch {
-          // Best-effort cleanup only.
-        }
-        throw error;
-      }
-
-      return { content: body, revision: revisionFor(body) };
-    });
-  }
-
-  withWriteLock(fn) {
-    for (let attempt = 0; attempt <= LOCK_RETRIES; attempt += 1) {
-      let fd;
-      try {
-        fd = openSync(this.lockPath, "wx");
-        writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), "utf8");
-        try {
-          return fn();
-        } finally {
-          closeSync(fd);
-          fd = undefined;
-          try {
-            unlinkSync(this.lockPath);
-          } catch {
-            // Best-effort cleanup only.
-          }
-        }
-      } catch (error) {
-        if (fd !== undefined) {
-          try {
-            closeSync(fd);
-          } catch {
-            // Best-effort cleanup only.
-          }
-        }
-
-        if (error.code !== "EEXIST") throw error;
-
-        try {
-          if (Date.now() - statSync(this.lockPath).mtimeMs > LOCK_STALE_MS) {
-            unlinkSync(this.lockPath);
-            continue;
-          }
-        } catch (staleError) {
-          if (staleError.code === "ENOENT") continue;
-        }
-
-        if (attempt === LOCK_RETRIES) {
-          throw new Error(`handoff write lock busy after ${(LOCK_RETRIES + 1) * LOCK_RETRY_MS}ms`);
-        }
-        sleepSync(LOCK_RETRY_MS);
-      }
-    }
-
-    throw new Error("unreachable handoff lock state");
+    return writeSnapshot(this.handoffPath, this.lockPath, content, expectedRevision);
   }
 
   appendEvent(kind, payload, sourceSession) {
@@ -203,5 +287,28 @@ export class CoordinationStore {
   advanceSessionCursor(sessionId, eventId) {
     const cursorPath = join(this.dir, "sessions", `${safeSessionId(sessionId)}.cursor`);
     writeFileSync(cursorPath, String(eventId), "utf8");
+  }
+}
+
+export class GlobalHandoffStore {
+  constructor() {
+    this.dir = globalStateDir();
+    this.named = new NamedHandoffStore(this.dir);
+  }
+
+  listHandoffs() {
+    return this.named.listHandoffs();
+  }
+
+  handoffPath(name) {
+    return this.named.handoffPath(name);
+  }
+
+  getHandoffSnapshot(name) {
+    return this.named.getHandoffSnapshot(name);
+  }
+
+  writeHandoff(name, content, expectedRevision) {
+    return this.named.writeHandoff(name, content, expectedRevision);
   }
 }
