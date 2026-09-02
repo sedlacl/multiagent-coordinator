@@ -1,6 +1,7 @@
 ---
 name: handoff
-description: Replace workspace handoff.md coordination snapshot from the current conversation
+description: Save or update a named workspace handoff from the current conversation
+argument-hint: <name>
 ---
 
-Follow skill `handoff` immediately and replace `.cursor/multiagent-coordinator/handoff.md`.
+Follow skill `handoff` with the supplied name. Save a compact named workspace checkpoint; do not update unrelated handoffs.
